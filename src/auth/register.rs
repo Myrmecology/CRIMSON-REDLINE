@@ -4,10 +4,9 @@ use crate::ui::{ColorScheme, animations};
 use crate::auth::AuthSystem;
 use crossterm::{
     event::{self, Event, KeyCode, KeyEvent},
-    terminal::{Clear, ClearType},
+    terminal::{Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
     cursor,
     execute,
-    style::{Color, Print, SetForegroundColor, ResetColor},
 };
 use std::io::{self, Write};
 use anyhow::Result;
@@ -308,31 +307,32 @@ impl RegisterScreen {
     }
 
     /// Process registration attempt
-    pub async fn attempt_register(&mut self, auth: &mut AuthSystem) -> Result<bool> {
-        // Show loading animation
-        animations::show_processing("CREATING AGENT PROFILE", 2000).await?;
-        
-        match auth.register(&self.username, &self.password, &self.confirm_password).await {
-            Ok(user) => {
-                // Clear sensitive data
-                self.password.clear();
-                self.confirm_password.clear();
-                
-                // Show success message
-                animations::show_success(&format!(
-                    "AGENT {} SUCCESSFULLY CREATED - PROCEED TO LOGIN",
-                    user.username
-                )).await?;
-                
-                self.success_message = Some(format!("Agent {} created successfully!", user.username));
-                Ok(true)
-            }
-            Err(e) => {
-                self.error_message = Some(e.to_string());
-                Ok(false)
-            }
+pub async fn attempt_register(&mut self, auth: &mut AuthSystem) -> Result<bool> {
+    // Show loading animation
+    animations::show_processing("CREATING AGENT PROFILE", 2000).await?;
+    
+    match auth.register(&self.username, &self.password, &self.confirm_password).await {
+        Ok(user) => {
+            // Clear sensitive data
+            self.password.clear();
+            self.confirm_password.clear();
+            
+            // Show success message
+            animations::show_success(&format!(
+                "AGENT {} SUCCESSFULLY CREATED - PROCEED TO LOGIN",
+                user.username
+            )).await?;
+            
+            // Don't set success_message here - just return true to exit
+            // self.success_message = Some(format!("Agent {} created successfully!", user.username));
+            Ok(true)
+        }
+        Err(e) => {
+            self.error_message = Some(e.to_string());
+            Ok(false)
         }
     }
+}
 
     /// Clear all fields
     pub fn clear(&mut self) {
@@ -361,28 +361,63 @@ pub async fn run_registration(auth: &mut AuthSystem, color_scheme: &ColorScheme)
     
     crossterm::terminal::enable_raw_mode()?;
     
-    loop {
-        register_screen.display(color_scheme).await?;
+    // Use alternate screen buffer to prevent flickering
+    execute!(
+        io::stdout(),
+        EnterAlternateScreen,
+        cursor::Hide
+    )?;
+    
+    // Initial display
+    register_screen.display(color_scheme).await?;
+    
+    let result = loop {
+        // Wait for a single key event
+        let key = loop {
+            if let Ok(Event::Key(k)) = event::read() {
+                break k;
+            }
+        };
         
-        if event::poll(std::time::Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                match register_screen.handle_input(key) {
-                    RegisterAction::Continue => continue,
-                    RegisterAction::AttemptRegister => {
-                        let success = register_screen.attempt_register(auth).await?;
-                        if success {
-                            // Wait for user to see success message
-                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                            crossterm::terminal::disable_raw_mode()?;
-                            return Ok(true);
-                        }
-                    }
-                    RegisterAction::Cancel => {
-                        crossterm::terminal::disable_raw_mode()?;
-                        return Ok(false);
-                    }
+        // Process the key
+        match register_screen.handle_input(key) {
+            RegisterAction::Continue => {
+                // Redraw only when input changes
+                register_screen.display(color_scheme).await?;
+            }
+            RegisterAction::AttemptRegister => {
+                let success = register_screen.attempt_register(auth).await?;
+                if success {
+                    // Show success for 2 seconds then exit
+                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                    
+                    // Exit the registration screen
+                    break true;
                 }
+                // Redraw to show error message if failed
+                register_screen.display(color_scheme).await?;
+            }
+            RegisterAction::Cancel => {
+                break false;
             }
         }
-    }
+        
+        // Clear any buffered events
+        while event::poll(std::time::Duration::from_millis(0))? {
+            let _ = event::read()?;
+        }
+    };
+    
+    // Clean up and restore terminal - IMPORTANT: This must happen
+    execute!(
+        io::stdout(),
+        LeaveAlternateScreen,
+        cursor::Show
+    )?;
+    crossterm::terminal::disable_raw_mode()?;
+    
+    // Clear the main screen after leaving alternate screen
+    crate::utils::clear_screen()?;
+    
+    Ok(result)
 }

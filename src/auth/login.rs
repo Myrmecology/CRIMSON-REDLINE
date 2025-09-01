@@ -4,10 +4,9 @@ use crate::ui::{ColorScheme, animations};
 use crate::auth::AuthSystem;
 use crossterm::{
     event::{self, Event, KeyCode, KeyEvent},
-    terminal::{Clear, ClearType},
+    terminal::{Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
     cursor,
     execute,
-    style::{Color, Print, SetForegroundColor, ResetColor},
 };
 use std::io::{self, Write};
 use anyhow::Result;
@@ -234,32 +233,61 @@ pub async fn run_login(auth: &mut AuthSystem, color_scheme: &ColorScheme) -> Res
     
     crossterm::terminal::enable_raw_mode()?;
     
-    loop {
-        login_screen.display(color_scheme).await?;
+    // Use alternate screen buffer to prevent flickering
+    execute!(
+        io::stdout(),
+        EnterAlternateScreen,
+        cursor::Hide
+    )?;
+    
+    // Initial display
+    login_screen.display(color_scheme).await?;
+    
+    let result = loop {
+        // Wait for a single key event
+        let key = loop {
+            if let Ok(Event::Key(k)) = event::read() {
+                break k;
+            }
+        };
         
-        if event::poll(std::time::Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                match login_screen.handle_input(key) {
-                    LoginAction::Continue => continue,
-                    LoginAction::AttemptLogin => {
-                        let success = login_screen.attempt_login(auth).await?;
-                        if success {
-                            crossterm::terminal::disable_raw_mode()?;
-                            return Ok(true);
-                        }
-                        if login_screen.attempts >= 3 {
-                            crossterm::terminal::disable_raw_mode()?;
-                            return Ok(false);
-                        }
-                    }
-                    LoginAction::Cancel => {
-                        crossterm::terminal::disable_raw_mode()?;
-                        return Ok(false);
-                    }
+        // Process the key
+        match login_screen.handle_input(key) {
+            LoginAction::Continue => {
+                // Redraw only when input changes
+                login_screen.display(color_scheme).await?;
+            }
+            LoginAction::AttemptLogin => {
+                let success = login_screen.attempt_login(auth).await?;
+                if success {
+                    break true;
                 }
+                if login_screen.attempts >= 3 {
+                    break false;
+                }
+                // Redraw to show error message
+                login_screen.display(color_scheme).await?;
+            }
+            LoginAction::Cancel => {
+                break false;
             }
         }
-    }
+        
+        // Clear any buffered events
+        while event::poll(std::time::Duration::from_millis(0))? {
+            let _ = event::read()?;
+        }
+    };
+    
+    // Clean up and restore terminal
+    execute!(
+        io::stdout(),
+        LeaveAlternateScreen,
+        cursor::Show
+    )?;
+    crossterm::terminal::disable_raw_mode()?;
+    
+    Ok(result)
 }
 
 #[cfg(test)]

@@ -3,7 +3,7 @@
 use crate::ui::{ColorScheme, ascii_art};
 use crossterm::{
     event::{self, Event, KeyCode, KeyEvent},
-    terminal::{Clear, ClearType},
+    terminal::{Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
     cursor,
     execute,
 };
@@ -147,12 +147,13 @@ impl MainMenu {
         }
     }
 
-    /// Display the menu
+    /// Display the menu (optimized to prevent flickering)
     pub async fn display(&self, color_scheme: &ColorScheme) -> Result<()> {
+        // Move cursor to home position instead of clearing entire screen
         execute!(
             io::stdout(),
-            Clear(ClearType::All),
-            cursor::MoveTo(0, 0)
+            cursor::MoveTo(0, 0),
+            cursor::Hide
         )?;
 
         // Show skull art if enabled
@@ -160,19 +161,33 @@ impl MainMenu {
             let skull = ascii_art::SKULL_SMALL;
             for line in skull.lines() {
                 color_scheme.print_colored(line)?;
+                execute!(io::stdout(), Clear(ClearType::UntilNewLine))?;
                 println!();
             }
             println!();
         }
 
         // Display title with border
-        color_scheme.print_colored("╔════════════════════════════════════════════════════════════╗\n")?;
-        color_scheme.print_colored("║                                                            ║\n")?;
+        color_scheme.print_colored("╔════════════════════════════════════════════════════════════╗")?;
+        execute!(io::stdout(), Clear(ClearType::UntilNewLine))?;
+        println!();
+        
+        color_scheme.print_colored("║                                                            ║")?;
+        execute!(io::stdout(), Clear(ClearType::UntilNewLine))?;
+        println!();
+        
         let title_line = format!("║{:^60}║", self.title);
         color_scheme.print_colored(&title_line)?;
+        execute!(io::stdout(), Clear(ClearType::UntilNewLine))?;
         println!();
-        color_scheme.print_colored("║                                                            ║\n")?;
-        color_scheme.print_colored("╚════════════════════════════════════════════════════════════╝\n")?;
+        
+        color_scheme.print_colored("║                                                            ║")?;
+        execute!(io::stdout(), Clear(ClearType::UntilNewLine))?;
+        println!();
+        
+        color_scheme.print_colored("╚════════════════════════════════════════════════════════════╝")?;
+        execute!(io::stdout(), Clear(ClearType::UntilNewLine))?;
+        println!();
         println!();
 
         // Display options
@@ -186,13 +201,22 @@ impl MainMenu {
                 color_scheme.print_colored(&format!("[{}]", option.label))?;
                 color_scheme.print_dim(&format!(" - {}", option.description))?;
             }
+            execute!(io::stdout(), Clear(ClearType::UntilNewLine))?;
             println!();
         }
 
         println!();
-        color_scheme.print_colored("────────────────────────────────────────────────────────────\n")?;
-        color_scheme.print_colored("[↑/↓] Navigate  [ENTER] Select  [ESC] Back\n")?;
-
+        color_scheme.print_colored("────────────────────────────────────────────────────────────")?;
+        execute!(io::stdout(), Clear(ClearType::UntilNewLine))?;
+        println!();
+        
+        color_scheme.print_colored("[↑/↓] Navigate  [ENTER] Select  [ESC] Back")?;
+        execute!(io::stdout(), Clear(ClearType::UntilNewLine))?;
+        println!();
+        
+        // Clear any remaining lines from previous render
+        execute!(io::stdout(), Clear(ClearType::FromCursorDown))?;
+        
         io::stdout().flush()?;
         Ok(())
     }
@@ -340,23 +364,48 @@ impl CommandPrompt {
     }
 }
 
-/// Run menu interaction loop
+/// Run menu interaction loop (optimized with alternate screen buffer)
 pub async fn run_menu(menu: &mut MainMenu, color_scheme: &ColorScheme) -> Result<MenuAction> {
+    // Enter alternate screen buffer to prevent flickering
+    execute!(
+        io::stdout(),
+        EnterAlternateScreen,
+        Clear(ClearType::All),  // Add this to clear any artifacts
+        cursor::MoveTo(0, 0),   // Add this to ensure we start at top
+        cursor::Hide            // Add this to hide cursor
+    )?;
+    
     crossterm::terminal::enable_raw_mode()?;
     
-    loop {
-        menu.display(color_scheme).await?;
-        
+    // Initial display
+    menu.display(color_scheme).await?;
+    
+    let result = loop {
         if event::poll(std::time::Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
                 let action = menu.handle_input(key);
-                if action != MenuAction::Continue {
-                    crossterm::terminal::disable_raw_mode()?;
-                    return Ok(action);
+                
+                if action == MenuAction::Continue {
+                    // Redraw only when navigating
+                    menu.display(color_scheme).await?;
+                } else {
+                    break action;
                 }
             }
         }
-    }
+    };
+    
+    // Clean up and leave alternate screen
+    crossterm::terminal::disable_raw_mode()?;
+    execute!(
+        io::stdout(),
+        cursor::Show,           // Show cursor again
+        LeaveAlternateScreen,
+        Clear(ClearType::All),  // Clear screen on exit
+        cursor::MoveTo(0, 0)    // Reset cursor position
+    )?;
+    
+    Ok(result)
 }
 
 #[cfg(test)]

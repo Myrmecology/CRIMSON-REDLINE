@@ -38,24 +38,32 @@ impl RedlineUI {
     }
 
     /// Initialize the terminal UI
-    pub async fn initialize(&mut self) -> Result<()> {
-        // Clear screen
-        execute!(
-            io::stdout(),
-            Clear(ClearType::All),
-            cursor::Hide
-        )?;
-        
-        // Update terminal size
-        let (width, height) = size()?;
-        self.terminal_width = width;
-        self.terminal_height = height;
-        
-        // Show intro animation
-        animations::show_intro(&self.color_scheme).await?;
-        
-        Ok(())
-    }
+pub async fn initialize(&mut self) -> Result<()> {
+    // Clear screen first
+    execute!(
+        io::stdout(),
+        Clear(ClearType::All),
+        cursor::MoveTo(0, 0),
+        cursor::Hide
+    )?;
+    
+    // Update terminal size
+    let (width, height) = size()?;
+    self.terminal_width = width;
+    self.terminal_height = height;
+    
+    // Show intro animation
+    animations::show_intro(&self.color_scheme).await?;
+    
+    // Clear screen after intro
+    execute!(
+        io::stdout(),
+        Clear(ClearType::All),
+        cursor::MoveTo(0, 0)
+    )?;
+    
+    Ok(())
+}
 
     /// Cleanup terminal on exit
     pub fn cleanup(&self) -> Result<()> {
