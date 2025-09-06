@@ -58,6 +58,7 @@ impl CommandHandler {
             "firewall" | "fw" | "barrier" => self.handle_firewall(args).await,
             "clear" | "cls" | "cl" => self.handle_clear().await,
             "logout" | "exit" | "quit" | "disconnect" => Ok(CommandResult::Logout),
+            "showcase" | "demo" | "art" => self.handle_showcase().await,
             _ => {
                 self.color_scheme.print_error(&format!("  [!] Unknown command: {}\n", command))?;
                 self.color_scheme.print_dim("  Type 'help' for available commands\n")?;
@@ -83,6 +84,12 @@ impl CommandHandler {
         } else {
             &args[0]
         };
+
+        // Show network map ASCII art
+        println!();
+        self.color_scheme.print_colored(crate::ui::ascii_art::NETWORK_MAP)?;
+        println!();
+        sleep(Duration::from_millis(500)).await;
 
         // Show scanning animation
         animations::scanning_animation(target, &self.color_scheme).await?;
@@ -141,14 +148,30 @@ impl CommandHandler {
         let target = &args[0];
         let vuln_id = args.get(1).map(|s| s.as_str()).unwrap_or("auto");
         
+        // Show target ASCII art
+        println!();
+        self.color_scheme.print_colored(crate::ui::ascii_art::TARGET)?;
+        println!();
+        sleep(Duration::from_millis(800)).await;
+        
         // Execute exploit
         let result = exploit::execute_exploit(target, vuln_id, &self.color_scheme).await?;
         
         if result.success {
+            // Show access granted
+            println!();
+            self.color_scheme.print_success(crate::ui::ascii_art::ACCESS_GRANTED)?;
+            println!();
+            
             self.game_state.add_reputation(20);
             self.game_state.increase_heat(25.0);
             self.color_scheme.print_success(&format!("\n  [✓] Exploit successful! Gained {} reputation\n", 20))?;
         } else {
+            // Show access denied
+            println!();
+            self.color_scheme.print_error(crate::ui::ascii_art::ACCESS_DENIED)?;
+            println!();
+            
             self.game_state.increase_heat(15.0);
             self.color_scheme.print_error("\n  [✗] Exploit failed!\n")?;
         }
@@ -189,7 +212,11 @@ impl CommandHandler {
         let target = &args[0];
         let payload = args.get(1).map(|s| s.as_str()).unwrap_or("trojan");
         
+        // Show injection ASCII art
         println!();
+        self.color_scheme.print_colored(crate::ui::ascii_art::INJECTION)?;
+        println!();
+        
         self.color_scheme.print_colored(&format!("  [>] Preparing {} payload for {}...\n", payload, target))?;
         animations::show_processing("Compiling payload", 1500).await?;
         
@@ -206,6 +233,11 @@ impl CommandHandler {
         let success = rand::random::<bool>();
         
         if success {
+            // Show virus symbol on success
+            println!();
+            self.color_scheme.print_colored(crate::ui::ascii_art::VIRUS)?;
+            println!();
+            
             self.color_scheme.print_success(&format!("\n  [✓] {} successfully injected into {}\n", payload, target))?;
             self.game_state.add_reputation(15);
             self.game_state.increase_heat(20.0);
@@ -287,7 +319,7 @@ impl CommandHandler {
     }
 
     /// Handle mission command
-    async fn handle_mission(&mut self, args: Vec<String>) -> Result<CommandResult> {
+    async fn handle_mission(&mut self, _args: Vec<String>) -> Result<CommandResult> {
         println!();
         self.color_scheme.print_colored("═══════════════════════════════════════════════════════════════\n")?;
         self.color_scheme.print_bright("                    MISSION BRIEFING                           \n")?;
@@ -322,8 +354,13 @@ impl CommandHandler {
     }
 
     /// Handle darkweb command
-    async fn handle_darkweb(&mut self, args: Vec<String>) -> Result<CommandResult> {
+    async fn handle_darkweb(&mut self, _args: Vec<String>) -> Result<CommandResult> {
+        // Show biohazard warning
         println!();
+        self.color_scheme.print_error(crate::ui::ascii_art::BIOHAZARD)?;
+        self.color_scheme.print_warning("\n  [!] ENTERING DARK WEB - ILLEGAL CONTENT WARNING\n")?;
+        sleep(Duration::from_millis(1500)).await;
+        
         self.color_scheme.print_colored("  [>] Connecting to dark web...\n")?;
         animations::show_processing("Establishing TOR connection", 2000).await?;
         
@@ -364,7 +401,12 @@ impl CommandHandler {
         let target = &args[0];
         let action = args.get(1).map(|s| s.as_str()).unwrap_or("analyze");
         
+        // Show firewall ASCII art
         println!();
+        self.color_scheme.print_colored(crate::ui::ascii_art::FIREWALL)?;
+        println!();
+        sleep(Duration::from_millis(1000)).await;
+        
         self.color_scheme.print_colored(&format!("  [>] Analyzing firewall on {}...\n", target))?;
         animations::show_processing("Detecting firewall rules", 1500).await?;
         
@@ -399,6 +441,87 @@ impl CommandHandler {
     /// Handle clear command
     async fn handle_clear(&self) -> Result<CommandResult> {
         crate::utils::clear_screen()?;
+        Ok(CommandResult::Continue)
+    }
+
+    /// Showcase all ASCII art
+    async fn handle_showcase(&self) -> Result<CommandResult> {
+        println!();
+        self.color_scheme.print_colored("═══════════════════════════════════════════════════════════════\n")?;
+        self.color_scheme.print_bright("                    ASCII ART SHOWCASE                         \n")?;
+        self.color_scheme.print_colored("═══════════════════════════════════════════════════════════════\n")?;
+        
+        // System Logo
+        self.color_scheme.print_colored("\n[SYSTEM LOGO]\n")?;
+        self.color_scheme.print_colored(crate::ui::ascii_art::SYSTEM_LOGO)?;
+        sleep(Duration::from_millis(1500)).await;
+        
+        // Network Map
+        self.color_scheme.print_colored("\n[NETWORK TOPOLOGY]\n")?;
+        self.color_scheme.print_colored(crate::ui::ascii_art::NETWORK_MAP)?;
+        sleep(Duration::from_millis(1500)).await;
+        
+        // Target
+        self.color_scheme.print_colored("\n[TARGET ACQUIRED]\n")?;
+        self.color_scheme.print_colored(crate::ui::ascii_art::TARGET)?;
+        sleep(Duration::from_millis(1500)).await;
+        
+        // Firewall
+        self.color_scheme.print_colored("\n[FIREWALL DETECTED]\n")?;
+        self.color_scheme.print_colored(crate::ui::ascii_art::FIREWALL)?;
+        sleep(Duration::from_millis(1500)).await;
+        
+        // Access Granted
+        self.color_scheme.print_success(crate::ui::ascii_art::ACCESS_GRANTED)?;
+        sleep(Duration::from_millis(1000)).await;
+        
+        // Access Denied
+        self.color_scheme.print_error(crate::ui::ascii_art::ACCESS_DENIED)?;
+        sleep(Duration::from_millis(1000)).await;
+        
+        // Warning Sign
+        self.color_scheme.print_warning("\n[WARNING]\n")?;
+        self.color_scheme.print_warning(crate::ui::ascii_art::WARNING_SIGN)?;
+        sleep(Duration::from_millis(1500)).await;
+        
+        // Biohazard
+        self.color_scheme.print_error("\n[BIOHAZARD]\n")?;
+        self.color_scheme.print_error(crate::ui::ascii_art::BIOHAZARD)?;
+        sleep(Duration::from_millis(1500)).await;
+        
+        // Virus
+        self.color_scheme.print_colored("\n[VIRUS DETECTED]\n")?;
+        self.color_scheme.print_colored(crate::ui::ascii_art::VIRUS)?;
+        sleep(Duration::from_millis(1500)).await;
+        
+        // Binary Cascade
+        self.color_scheme.print_dim("\n[BINARY CASCADE]\n")?;
+        self.color_scheme.print_dim(crate::ui::ascii_art::BINARY_CASCADE)?;
+        sleep(Duration::from_millis(1500)).await;
+        
+        // Circuit Pattern
+        self.color_scheme.print_colored("\n[CIRCUIT PATTERN]\n")?;
+        self.color_scheme.print_colored(crate::ui::ascii_art::CIRCUIT_PATTERN)?;
+        sleep(Duration::from_millis(1500)).await;
+        
+        // Data Stream
+        self.color_scheme.print_colored("\n[DATA STREAM]\n")?;
+        self.color_scheme.print_colored(crate::ui::ascii_art::DATA_STREAM)?;
+        sleep(Duration::from_millis(1500)).await;
+        
+        // Injection
+        self.color_scheme.print_bright("\n[INJECTION VECTOR]\n")?;
+        self.color_scheme.print_bright(crate::ui::ascii_art::INJECTION)?;
+        sleep(Duration::from_millis(1000)).await;
+        
+        // Boot Sequence
+        self.color_scheme.print_colored("\n[BOOT SEQUENCE]\n")?;
+        self.color_scheme.print_colored(crate::ui::ascii_art::BOOT_SEQUENCE)?;
+        
+        println!();
+        self.color_scheme.print_colored("═══════════════════════════════════════════════════════════════\n")?;
+        self.color_scheme.print_dim("  End of showcase\n")?;
+        
         Ok(CommandResult::Continue)
     }
 
