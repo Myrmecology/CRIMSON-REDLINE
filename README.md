@@ -1,5 +1,7 @@
 ## WELCOME TO CRIMSON REDLINE ##
 
+For a video demo of this project please visit: https://www.youtube.com/watch?v=jHEcApXRvnQ 
+
 # CRIMSON-REDLINE
 
 A sinister terminal-based hacking simulator built with 100% Rust, featuring persistent user authentication, immersive red-themed aesthetics, and interactive cybersecurity gameplay.
